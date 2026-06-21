@@ -1,0 +1,449 @@
+-- VIP Admin Developer Suite (Ultimate Integrated Edition)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Clean up older configurations
+if playerGui:FindFirstChild("VipDeveloperMenuGui") then
+	playerGui.VipDeveloperMenuGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "VipDeveloperMenuGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- --- 1. MODULAR CONFIGURATION MATRIX TABLES ---
+local MovementConfigs = {
+	WalkSpeed = 16,
+	JumpPower = 50,
+	FlightEnabled = false,
+	FlightSpeed = 50,
+	InfiniteJump = false
+}
+
+local CombatConfigs = {
+	FovChangerValue = 70,
+	PvpDamageMultiplier = 1.0,
+	QuickReloadEnabled = false,
+	CustomWeaponTrail = false
+}
+
+local VisualsConfigs = {
+	ChamsAlwaysOnTop = false,
+	ChamsFillColor = Color3.fromRGB(0, 255, 150),
+	ChamsOutlineColor = Color3.fromRGB(255, 255, 255),
+	ChamsTransparency = 0.5,
+	FullBrightActive = false
+}
+
+local EnvironmentConfigs = {
+	CustomGravity = 196.2,
+	TimeOfDayValue = 12,
+	FogDensityValue = 0.2
+}
+
+local InterfaceConfigs = {
+	RainbowTheme = false,
+	MenuToggleKey = Enum.KeyCode.M,
+	ParticleEmitterColor = Color3.fromRGB(0, 150, 255)
+}
+
+-- Original Lighting Backups
+local originalAmbient = Lighting.Ambient
+local originalOutdoorAmbient = Lighting.OutdoorAmbient
+local originalGravity = workspace.Gravity
+
+-- --- 2. MAIN USER INTERFACE CORE ---
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 460, 0, 440)
+mainFrame.Position = UDim2.new(0.5, -230, 0.5, -220)
+mainFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 22)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 12)
+uiCorner.Parent = mainFrame
+
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Color = Color3.fromRGB(0, 120, 255)
+uiStroke.Thickness = 2
+uiStroke.Parent = mainFrame
+
+-- Top Title Bar
+local titleBar = Instance.new("TextLabel")
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = Color3.fromRGB(18, 22, 36)
+titleBar.Text = "VIP GAMEPASS ADMIN SUITE"
+titleBar.Font = Enum.Font.GothamBold
+titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.TextSize = 14
+titleBar.Parent = mainFrame
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "×"
+closeBtn.TextColor3 = Color3.fromRGB(200, 50, 50)
+closeBtn.Font = Enum.Font.GothamMedium
+closeBtn.TextSize = 24
+closeBtn.Parent = mainFrame
+
+closeBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+end)
+
+-- --- 3. MULTI-TAB SCROLLING SYSTEM ---
+local tabContainer = Instance.new("Frame")
+tabContainer.Size = UDim2.new(1, -20, 0, 30)
+tabContainer.Position = UDim2.new(0, 10, 0, 50)
+tabContainer.BackgroundTransparency = 1
+tabContainer.Parent = mainFrame
+
+local scrollingContainer = Instance.new("ScrollingFrame")
+scrollingContainer.Size = UDim2.new(1, -20, 1, -100)
+scrollingContainer.Position = UDim2.new(0, 10, 0, 90)
+scrollingContainer.BackgroundTransparency = 1
+scrollingContainer.CanvasSize = UDim2.new(0, 0, 0, 800)
+scrollingContainer.ScrollBarThickness = 4
+scrollingContainer.Parent = mainFrame
+
+local uiListLayout = Instance.new("UIListLayout")
+uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+uiListLayout.Padding = UDim.new(0, 8)
+uiListLayout.Parent = scrollingContainer
+
+-- --- 4. ENGINE CONTROLS ELEMENT GENERATORS ---
+local function createMenuToggle(parent, labelText, defaultValue, callback)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 35)
+	row.BackgroundTransparency = 1
+	row.Parent = parent
+	
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Size = UDim2.new(0, 250, 1, 0)
+	textLabel.BackgroundTransparency = 1
+	textLabel.Text = labelText
+	textLabel.Font = Enum.Font.GothamSemibold
+	textLabel.TextColor3 = Color3.fromRGB(180, 200, 220)
+	textLabel.TextSize = 12
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
+	textLabel.Parent = row
+	
+	local toggleBtn = Instance.new("TextButton")
+	toggleBtn.Size = UDim2.new(0, 50, 0, 22)
+	toggleBtn.Position = UDim2.new(1, -60, 0.5, -11)
+	toggleBtn.BackgroundColor3 = defaultValue and Color3.fromRGB(0, 120, 255) or Color3.fromRGB(30, 35, 50)
+	toggleBtn.Text = defaultValue and "ON" or "OFF"
+	toggleBtn.Font = Enum.Font.GothamBold
+	toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	toggleBtn.TextSize = 10
+	toggleBtn.Parent = row
+	Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 4)
+	
+	local active = defaultValue
+	toggleBtn.MouseButton1Click:Connect(function()
+		active = not active
+		toggleBtn.BackgroundColor3 = active and Color3.fromRGB(0, 120, 255) or Color3.fromRGB(30, 35, 50)
+		toggleBtn.Text = active and "ON" or "OFF"
+		callback(active)
+	end)
+end
+
+local function createMenuSlider(parent, labelText, min, max, defaultValue, callback)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 45)
+	row.BackgroundTransparency = 1
+	row.Parent = parent
+	
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Size = UDim2.new(1, 0, 0, 20)
+	textLabel.BackgroundTransparency = 1
+	textLabel.Text = labelText .. ": " .. defaultValue
+	textLabel.Font = Enum.Font.GothamSemibold
+	textLabel.TextColor3 = Color3.fromRGB(180, 200, 220)
+	textLabel.TextSize = 12
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
+	textLabel.Parent = row
+	
+	local sliderTrack = Instance.new("Frame")
+	sliderTrack.Size = UDim2.new(1, -20, 0, 6)
+	sliderTrack.Position = UDim2.new(0, 0, 0, 25)
+	sliderTrack.BackgroundColor3 = Color3.fromRGB(25, 30, 45)
+	sliderTrack.Parent = row
+	Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
+	
+	local sliderFill = Instance.new("Frame")
+	sliderFill.Size = UDim2.new((defaultValue - min) / (max - min), 0, 1, 0)
+	sliderFill.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+	sliderFill.BorderSizePixel = 0
+	sliderFill.Parent = sliderTrack
+	Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+	
+	local sliderBtn = Instance.new("TextButton")
+	sliderBtn.Size = UDim2.new(0, 14, 0, 14)
+	sliderBtn.Position = UDim2.new((defaultValue - min) / (max - min), -7, 0.5, -7)
+	sliderBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	sliderBtn.Text = ""
+	sliderBtn.Parent = sliderTrack
+	Instance.new("UICorner", sliderBtn).CornerRadius = UDim.new(1, 0)
+	
+	local baseDragging = false
+	local function parseInput(input)
+		local relativeX = math.clamp(input.Position.X - sliderTrack.AbsolutePosition.X, 0, sliderTrack.AbsoluteSize.X)
+		local ratio = relativeX / sliderTrack.AbsoluteSize.X
+		sliderBtn.Position = UDim2.new(ratio, -7, 0.5, -7)
+		sliderFill.Size = UDim2.new(ratio, 0, 1, 0)
+		local finalVal = math.round(min + (ratio * (max - min)))
+		textLabel.Text = labelText .. ": " .. finalVal
+		callback(finalVal)
+	end
+	
+	sliderBtn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then baseDragging = true end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then baseDragging = false end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if baseDragging and input.UserInputType == Enum.UserInputType.MouseMovement then parseInput(input) end
+	end)
+end
+
+-- --- 5. POPULATING THE MODULE CONTEXTS ---
+
+-- [MOVEMENT CONFIGS INTERFACE]
+local movementTitle = Instance.new("TextLabel")
+movementTitle.Size = UDim2.new(1, 0, 0, 25)
+movementTitle.Text = "--- MOVEMENT CAPABILITIES ---"
+movementTitle.Font = Enum.Font.GothamBold
+movementTitle.TextColor3 = Color3.fromRGB(0, 150, 255)
+movementTitle.TextSize = 11
+movementTitle.BackgroundTransparency = 1
+movementTitle.Parent = scrollingContainer
+
+createMenuSlider(scrollingContainer, "Walk Speed Motor", 16, 200, 16, function(value)
+	MovementConfigs.WalkSpeed = value
+end)
+
+createMenuSlider(scrollingContainer, "Jump Power Multiplier", 50, 300, 50, function(value)
+	MovementConfigs.JumpPower = value
+end)
+
+createMenuToggle(scrollingContainer, "Infinite Jump Engine", false, function(state)
+	MovementConfigs.InfiniteJump = state
+end)
+
+createMenuToggle(scrollingContainer, "Noclip Core Physics", false, function(state)
+	MovementConfigs.FlightEnabled = state
+end)
+
+-- [COMBAT PARAMETER MODES]
+local combatTitle = Instance.new("TextLabel")
+combatTitle.Size = UDim2.new(1, 0, 0, 25)
+combatTitle.Text = "--- PVP & COMPONENT MODIFIERS ---"
+combatTitle.Font = Enum.Font.GothamBold
+combatTitle.TextColor3 = Color3.fromRGB(0, 150, 255)
+combatTitle.TextSize = 11
+combatTitle.BackgroundTransparency = 1
+combatTitle.Parent = scrollingContainer
+
+createMenuSlider(scrollingContainer, "Dynamic Viewport FOV Changer", 70, 120, 70, function(value)
+	CombatConfigs.FovChangerValue = value
+	TweenService:Create(camera, TweenInfo.new(0.2), {FieldOfView = value}):Play()
+end)
+
+createMenuToggle(scrollingContainer, "Equipped Item Trail Effect", false, function(state)
+	CombatConfigs.CustomWeaponTrail = state
+end)
+
+-- [VISUALS & RENDERING INTEGRATION]
+local visualsTitle = Instance.new("TextLabel")
+visualsTitle.Size = UDim2.new(1, 0, 0, 25)
+visualsTitle.Text = "--- GRAPHICS & HIGHLIGHTERS ---"
+visualsTitle.Font = Enum.Font.GothamBold
+visualsTitle.TextColor3 = Color3.fromRGB(0, 150, 255)
+visualsTitle.TextSize = 11
+visualsTitle.BackgroundTransparency = 1
+visualsTitle.Parent = scrollingContainer
+
+createMenuToggle(scrollingContainer, "Overhead VIP Character Highlighters", false, function(state)
+	VisualsConfigs.ChamsAlwaysOnTop = state
+end)
+
+createMenuToggle(scrollingContainer, "Ambient Map Fullbright", false, function(state)
+	VisualsConfigs.FullBrightActive = state
+	if not state then
+		Lighting.Ambient = originalAmbient
+		Lighting.OutdoorAmbient = originalOutdoorAmbient
+	end
+end)
+
+-- [ENVIRONMENT ADJUSTMENT CONTROLS]
+local envTitle = Instance.new("TextLabel")
+envTitle.Size = UDim2.new(1, 0, 0, 25)
+envTitle.Text = "--- ENVIRONMENT SANDBOX DATA ---"
+envTitle.Font = Enum.Font.GothamBold
+envTitle.TextColor3 = Color3.fromRGB(0, 150, 255)
+envTitle.TextSize = 11
+envTitle.BackgroundTransparency = 1
+envTitle.Parent = scrollingContainer
+
+createMenuSlider(scrollingContainer, "Server Gravity Override", 0, 196, 196, function(value)
+	EnvironmentConfigs.CustomGravity = value
+	workspace.Gravity = value
+end)
+
+createMenuSlider(scrollingContainer, "Time Acceleration Core", 0, 24, 12, function(value)
+	EnvironmentConfigs.TimeOfDayValue = value
+	Lighting.ClockTime = value
+end)
+
+-- [INTERFACE OPTION TABLES]
+local uiTitle = Instance.new("TextLabel")
+uiTitle.Size = UDim2.new(1, 0, 0, 25)
+uiTitle.Text = "--- THEME AND REFRESH MODES ---"
+uiTitle.Font = Enum.Font.GothamBold
+uiTitle.TextColor3 = Color3.fromRGB(0, 150, 255)
+uiTitle.TextSize = 11
+uiTitle.BackgroundTransparency = 1
+uiTitle.Parent = scrollingContainer
+
+createMenuToggle(scrollingContainer, "Rainbow Border Framework", false, function(state)
+	InterfaceConfigs.RainbowTheme = state
+end)
+
+
+-- --- 6. TICK MECHANIC LOOPS & REGISTRATIONS ---
+
+-- Character Model Tracker Loop
+RunService.RenderStepped:Connect(function()
+	local character = player.Character
+	if character then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			-- Enforce Speed Matrix values locally
+			if humanoid.WalkSpeed ~= MovementConfigs.WalkSpeed then
+				humanoid.WalkSpeed = MovementConfigs.WalkSpeed
+			end
+			-- Enforce Jump Matrix values locally
+			if humanoid.JumpPower ~= MovementConfigs.JumpPower then
+				humanoid.UseJumpPower = true
+				humanoid.JumpPower = MovementConfigs.JumpPower
+			end
+		end
+		
+		-- Noclip Character Physics Processor
+		if MovementConfigs.FlightEnabled then
+			for _, part in pairs(character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+				end
+			end
+		end
+	end
+	
+	-- Global Ambient Lighting Matrix Enforcement
+	if VisualsConfigs.FullBrightActive then
+		Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+	end
+	
+	-- Interactive Neon Color Cycling Frame Border
+	if InterfaceConfigs.RainbowTheme then
+		local hue = (tick() % 4) / 4
+		uiStroke.Color = Color3.fromHSV(hue, 0.8, 1)
+	else
+		uiStroke.Color = Color3.fromRGB(0, 120, 255)
+	end
+end)
+
+-- Character Native Engine Highlighting Engine
+local function refreshChamsVisuals()
+	for _, targetPlayer in pairs(Players:GetPlayers()) do
+		if targetPlayer ~= player and targetPlayer.Character then
+			local char = targetPlayer.Character
+			local existingHighlight = char:FindFirstChild("AdminHighlight")
+			
+			if VisualsConfigs.ChamsAlwaysOnTop then
+				if not existingHighlight then
+					existingHighlight = Instance.new("Highlight")
+					existingHighlight.Name = "AdminHighlight"
+					existingHighlight.Parent = char
+				end
+				existingHighlight.FillColor = VisualsConfigs.ChamsFillColor
+				existingHighlight.OutlineColor = VisualsConfigs.ChamsOutlineColor
+				existingHighlight.FillTransparency = VisualsConfigs.ChamsTransparency
+				existingHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			else
+				if existingHighlight then
+					existingHighlight:Destroy()
+				end
+			end
+		end
+	end
+end
+
+-- Hook highlight routine to runtime steps
+RunService.Heartbeat:Connect(refreshChamsVisuals)
+
+-- Infinite Jump Hook Connection
+UserInputService.JumpRequest:Connect(function()
+	if MovementConfigs.InfiniteJump and player.Character then
+		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
+-- Weapon/Tool Trail Generation System
+local function trackEquippedItemTrails(child)
+	if child:IsA("Tool") and CombatConfigs.CustomWeaponTrail then
+		local handle = child:FindFirstChild("Handle")
+		if handle then
+			local a0 = handle:FindFirstChild("TrailAtt0") or Instance.new("Attachment", handle)
+			a0.Name = "TrailAtt0"
+			a0.Position = Vector3.new(0, 1, 0)
+			
+			local a1 = handle:FindFirstChild("TrailAtt1") or Instance.new("Attachment", handle)
+			a1.Name = "TrailAtt1"
+			a1.Position = Vector3.new(0, -1, 0)
+			
+			local itemTrail = handle:FindFirstChild("AdminItemTrail") or Instance.new("Trail", handle)
+			itemTrail.Name = "AdminItemTrail"
+			itemTrail.Attachment0 = a0
+			itemTrail.Attachment1 = a1
+			itemTrail.Color = ColorSequence.new(Color3.fromRGB(0, 150, 255), Color3.fromRGB(255, 0, 100))
+			itemTrail.Lifetime = 0.4
+		end
+	end
+end
+
+player.CharacterAdded:Connect(function(char)
+	char.ChildAdded:Connect(trackEquippedItemTrails)
+end)
+if player.Character then
+	player.Character.ChildAdded:Connect(trackEquippedItemTrails)
+end
+
+-- Keybind Menu Frame Interceptor Toggle
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode == InterfaceConfigs.MenuToggleKey then
+		mainFrame.Visible = not mainFrame.Visible
+	end
+end)
+
+print("VIP Admin Developer Configuration Suite Compiled Successfully.")
