@@ -1,1 +1,717 @@
+-- Wild VIP Mod Menu V2 (Full Integrated Script)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local playerGui = player:WaitForChild("PlayerGui")
+
+if playerGui:FindFirstChild("WildVIPMenuGui") then
+	playerGui.WildVIPMenuGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "WildVIPMenuGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- --- GLOBAL MOD STATES ---
+local infJumpEnabled = false
+local noclipEnabled = false
+local flyEnabled = false
+local flySpeed = 50
+local ctrlClickTpEnabled = false
+
+-- --- CUSTOM OVERHEAD TAG STATES ---
+local customTagEnabled = false
+local customTagSize = 14
+local customTagColor = Color3.fromRGB(0, 255, 150)
+
+local espTarget = "All Players"
+local espColor = Color3.fromRGB(0, 180, 255)
+local espBoxes = false
+local espTracers = false
+
+-- --- AIM ASSIST STATES ---
+local aimAssistEnabled = false
+local aimStrength = 5 
+local aimFovRadius = 100
+local aimFovColor = Color3.fromRGB(0, 180, 255)
+local showFovCircle = false
+
+-- Custom Activation Binds
+local aimInputType = Enum.UserInputType.MouseButton2
+local aimKeyCode = nil                               
+local currentBindName = "MouseButton2"
+
+-- --- HITBOX EXPANDER STATES ---
+local hitboxExpanderEnabled = false
+local hitboxSizeValue = 2 
+local hitboxColor = Color3.fromRGB(255, 0, 100)
+local showHitboxVisuals = false
+
+-- Store original core part properties to prevent breaking games when toggled off
+local originalPartSizes = {}
+
+-- --- FOV CIRCLE DRAWING ---
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1.5
+fovCircle.NumSides = 64
+fovCircle.Filled = false
+fovCircle.Transparency = 1
+
+-- --- CONFIGURATION LIMITS ---
+local MIN_SPEED, MAX_SPEED, DEFAULT_SPEED = 16, 150, 16
+local MIN_JUMP, MAX_JUMP, DEFAULT_JUMP = 50, 300, 50
+local MIN_FLY, MAX_FLY, DEFAULT_FLY = 20, 300, 50
+
+-- --- MAIN WINDOW ---
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 420, 0, 400)
+mainFrame.Position = UDim2.new(0, (screenGui.AbsoluteSize.X/2) - 210, 0, (screenGui.AbsoluteSize.Y/2) - 200)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10, 12, 22)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Visible = false
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 14)
+uiCorner.Parent = mainFrame
+
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Color = Color3.fromRGB(0, 130, 255)
+uiStroke.Thickness = 2
+uiStroke.Parent = mainFrame
+
+-- Animated Cosmic Starfield Background
+local galaxyBg = Instance.new("Frame")
+galaxyBg.Size = UDim2.new(1, 0, 1, 0)
+galaxyBg.BackgroundTransparency = 1
+galaxyBg.Parent = mainFrame
+
+for i = 1, 40 do
+	local star = Instance.new("Frame")
+	star.Size = UDim2.new(0, math.random(1, 3), 0, math.random(1, 3))
+	star.Position = UDim2.new(math.random(), 0, math.random(), 0)
+	star.BackgroundColor3 = math.random() > 0.5 and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 180, 255)
+	star.BackgroundTransparency = math.random(3, 7) / 10
+	star.BorderSizePixel = 0
+	star.Parent = galaxyBg
+	Instance.new("UICorner", star).CornerRadius = UDim.new(1, 0)
+
+	task.spawn(function()
+		while task.wait(math.random(1, 4)) do
+			if not mainFrame then break end
+			TweenService:Create(star, TweenInfo.new(1), {BackgroundTransparency = 1}):Play()
+			task.wait(1)
+			TweenService:Create(star, TweenInfo.new(1), {BackgroundTransparency = math.random(2, 6)/10}):Play()
+		end
+	end)
+end
+
+-- --- HEADER (CENTERED) ---
+local headerBar = Instance.new("TextButton")
+headerBar.Size = UDim2.new(1, 0, 0, 45)
+headerBar.BackgroundTransparency = 1
+headerBar.Text = ""
+headerBar.Parent = mainFrame
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, 0, 1, 0)
+titleText.Position = UDim2.new(0, 0, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "WILD VIP V2"
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 18
+titleText.TextXAlignment = Enum.TextXAlignment.Center 
+titleText.Parent = headerBar
+
+RunService.RenderStepped:Connect(function()
+	titleText.TextColor3 = Color3.fromHSV((tick() % 4) / 4, 0.8, 1)
+end)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 7)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "×"
+closeBtn.TextColor3 = Color3.fromRGB(0, 130, 255)
+closeBtn.Font = Enum.Font.GothamMedium
+closeBtn.TextSize = 26
+closeBtn.ZIndex = 5
+closeBtn.Parent = mainFrame
+
+-- Drag Logic
+local dragging, dragStart, startPos
+headerBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true; dragStart = input.Position; startPos = mainFrame.Position
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(0, startPos.X.Offset + delta.X, 0, startPos.Y.Offset + delta.Y)
+	end
+end)
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+
+-- --- TABS MANAGER ---
+local tabContainer = Instance.new("Frame")
+tabContainer.Size = UDim2.new(1, -30, 0, 32)
+tabContainer.Position = UDim2.new(0, 15, 0, 50)
+tabContainer.BackgroundTransparency = 1
+tabContainer.Parent = mainFrame
+
+local pages = {
+	Movement = Instance.new("ScrollingFrame"),
+	Highlight = Instance.new("ScrollingFrame"),
+	Aiming = Instance.new("ScrollingFrame")
+}
+
+for name, page in pairs(pages) do
+	page.Size = UDim2.new(1, 0, 1, -105)
+	page.Position = UDim2.new(0, 0, 0, 95)
+	page.BackgroundTransparency = 1
+	page.CanvasSize = UDim2.new(0, 0, 0, 540) -- Expanded to perfectly hold title label configs
+	page.ScrollBarThickness = 4
+	page.Visible = false
+	page.Parent = mainFrame
+end
+pages.Movement.Visible = true
+
+local function setupTabBtn(name, posX, pageToOpen)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 110, 1, 0)
+	btn.Position = UDim2.new(0, posX, 0, 0)
+	btn.BackgroundColor3 = pageToOpen.Visible and Color3.fromRGB(20, 35, 65) or Color3.fromRGB(15, 18, 30)
+	btn.Text = name
+	btn.TextColor3 = pageToOpen.Visible and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 130, 255)
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 12
+	btn.Parent = tabContainer
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(0, 80, 180); s.Thickness = 1; s.Parent = btn
+
+	btn.MouseButton1Click:Connect(function()
+		for _, p in pairs(pages) do p.Visible = false end
+		for _, child in pairs(tabContainer:GetChildren()) do
+			if child:IsA("TextButton") then
+				child.BackgroundColor3 = Color3.fromRGB(15, 18, 30)
+				child.TextColor3 = Color3.fromRGB(0, 130, 255)
+			end
+		end
+		btn.BackgroundColor3 = Color3.fromRGB(20, 35, 65)
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		pageToOpen.Visible = true
+	end)
+end
+
+setupTabBtn("Movement", 0, pages.Movement)
+setupTabBtn("Highlight", 120, pages.Highlight)
+setupTabBtn("Aiming", 240, pages.Aiming)
+
+-- --- REUSABLE UI ELEMENT CONSTRUCTORS ---
+local function createSlider(parent, text, yPos, min, max, default, callback)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -30, 0, 20)
+	label.Position = UDim2.new(0, 15, 0, yPos)
+	label.BackgroundTransparency = 1
+	label.Text = text .. ": " .. default
+	label.TextColor3 = Color3.fromRGB(160, 190, 230)
+	label.Font = Enum.Font.GothamSemibold
+	label.TextSize = 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = parent
+
+	local sliderTrack = Instance.new("Frame")
+	sliderTrack.Size = UDim2.new(1, -30, 0, 6)
+	sliderTrack.Position = UDim2.new(0, 15, 0, yPos + 22)
+	sliderTrack.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
+	sliderTrack.Parent = parent
+
+	local sliderFill = Instance.new("Frame")
+	sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+	sliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+	sliderFill.BorderSizePixel = 0
+	sliderFill.Parent = sliderTrack
+
+	local sliderBtn = Instance.new("ImageButton")
+	sliderBtn.Size = UDim2.new(0, 14, 0, 14)
+	sliderBtn.Position = UDim2.new((default - min) / (max - min), -7, 0.5, -7)
+	sliderBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	sliderBtn.Parent = sliderTrack
+	Instance.new("UICorner", sliderBtn).CornerRadius = UDim.new(1,0)
+
+	local sliderDragging = false
+	local function updateSlider(input)
+		local relativeX = math.clamp(input.Position.X - sliderTrack.AbsolutePosition.X, 0, sliderTrack.AbsoluteSize.X)
+		local percentage = relativeX / sliderTrack.AbsoluteSize.X
+		sliderBtn.Position = UDim2.new(percentage, -7, 0.5, -7)
+		sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+		local value = math.round(min + (percentage * (max - min)))
+		label.Text = text .. ": " .. value
+		callback(value)
+	end
+	sliderBtn.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then sliderDragging = true end end)
+	UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then sliderDragging = false end end)
+	UserInputService.InputChanged:Connect(function(input) if sliderDragging and input.UserInputType == Enum.UserInputType.MouseMovement then updateSlider(input) end end)
+end
+
+local function createToggle(parent, text, yPos, default, callback)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -100, 0, 30)
+	label.Position = UDim2.new(0, 15, 0, yPos)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(160, 190, 230)
+	label.Font = Enum.Font.GothamSemibold
+	label.TextSize = 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = parent
+
+	local toggleBtn = Instance.new("TextButton")
+	toggleBtn.Size = UDim2.new(0, 45, 0, 22)
+	toggleBtn.Position = UDim2.new(1, -60, 0, yPos + 4)
+	toggleBtn.BackgroundColor3 = default and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(25, 30, 50)
+	toggleBtn.Text = ""
+	toggleBtn.Parent = parent
+	Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
+
+	local circle = Instance.new("Frame")
+	circle.Size = UDim2.new(0, 16, 0, 16)
+	circle.Position = default and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+	circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	circle.Parent = toggleBtn
+	Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+	local state = default
+	toggleBtn.MouseButton1Click:Connect(function()
+		state = not state
+		TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = state and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(25, 30, 50)}):Play()
+		TweenService:Create(circle, TweenInfo.new(0.2), {Position = state and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)}):Play()
+		callback(state)
+	end)
+end
+
+local function createColorWheelSpectrum(parent, text, yPos, defaultColor, callback)
+	local colorLabel = Instance.new("TextLabel")
+	colorLabel.Size = UDim2.new(0, 120, 0, 25)
+	colorLabel.Position = UDim2.new(0, 15, 0, yPos)
+	colorLabel.BackgroundTransparency = 1
+	colorLabel.Text = text
+	colorLabel.TextColor3 = Color3.fromRGB(160, 190, 230)
+	colorLabel.Font = Enum.Font.GothamSemibold
+	colorLabel.TextSize = 12
+	colorLabel.TextXAlignment = Enum.TextXAlignment.Left
+	colorLabel.Parent = parent
+
+	local spectrumFrame = Instance.new("ImageButton")
+	spectrumFrame.Size = UDim2.new(1, -150, 0, 22)
+	spectrumFrame.Position = UDim2.new(0, 135, 0, yPos + 2)
+	spectrumFrame.Image = "rbxassetid://3641079629"
+	spectrumFrame.ScaleType = Enum.ScaleType.Stretch
+	spectrumFrame.Parent = parent
+	Instance.new("UICorner", spectrumFrame).CornerRadius = UDim.new(0, 4)
+
+	local indicator = Instance.new("Frame")
+	indicator.Size = UDim2.new(0, 8, 1, 4)
+	indicator.Position = UDim2.new(0.5, -4, 0, -2)
+	indicator.BackgroundColor3 = defaultColor
+	indicator.BorderSizePixel = 1
+	indicator.Parent = spectrumFrame
+	Instance.new("UICorner", indicator).CornerRadius = UDim.new(0, 3)
+
+	local activeSliding = false
+	local function updateWheelColor(input)
+		local relativeX = math.clamp((input.Position.X - spectrumFrame.AbsolutePosition.X) / spectrumFrame.AbsoluteSize.X, 0, 1)
+		indicator.Position = UDim2.new(relativeX, -4, 0, -2)
+		local generatedColor = Color3.fromHSV(relativeX, 0.9, 1)
+		indicator.BackgroundColor3 = generatedColor
+		callback(generatedColor)
+	end
+	spectrumFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then activeSliding = true; updateWheelColor(input) end end)
+	UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then activeSliding = false end end)
+	UserInputService.InputChanged:Connect(function(input) if activeSliding and input.UserInputType == Enum.UserInputType.MouseMovement then updateWheelColor(input) end end)
+end
+
+-- --- TAB 1: MOVEMENT & CUSTOM CONFIGS ---
+createSlider(pages.Movement, "Walk Speed", 10, MIN_SPEED, MAX_SPEED, DEFAULT_SPEED, function(v)
+	if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = v end
+end)
+createSlider(pages.Movement, "Jump Power", 65, MIN_JUMP, MAX_JUMP, DEFAULT_JUMP, function(v)
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum then hum.UseJumpPower = true; hum.JumpPower = v end
+end)
+createSlider(pages.Movement, "Fly Speed", 120, MIN_FLY, MAX_FLY, DEFAULT_FLY, function(v)
+	flySpeed = v
+end)
+createToggle(pages.Movement, "Noclip Mode", 175, noclipEnabled, function(state) noclipEnabled = state end)
+createToggle(pages.Movement, "Infinite Jump", 210, infJumpEnabled, function(state) infJumpEnabled = state end)
+createToggle(pages.Movement, "Fly Mode", 245, flyEnabled, function(state) flyEnabled = state end)
+createToggle(pages.Movement, "Ctrl + Click = Teleport", 280, ctrlClickTpEnabled, function(state) ctrlClickTpEnabled = state end)
+
+-- Added Player Label Configurations
+createToggle(pages.Movement, "Show Custom Player Tag", 315, customTagEnabled, function(state) customTagEnabled = state end)
+createSlider(pages.Movement, "Player Tag Text Size", 350, 10, 32, customTagSize, function(v) customTagSize = v end)
+createColorWheelSpectrum(pages.Movement, "Player Tag Color:", 405, customTagColor, function(c) customTagColor = c end)
+
+-- --- TAB 2: HIGHLIGHT (ESP) MODULE ---
+createToggle(pages.Highlight, "Show Player Boxes", 10, espBoxes, function(state) espBoxes = state end)
+createToggle(pages.Highlight, "Show Tracer Lines", 45, espTracers, function(state) espTracers = state end)
+
+local dropLabel = Instance.new("TextLabel")
+dropLabel.Size = UDim2.new(0, 100, 0, 25)
+dropLabel.Position = UDim2.new(0, 15, 0, 90)
+dropLabel.BackgroundTransparency = 1
+dropLabel.Text = "Select Target:"
+dropLabel.TextColor3 = Color3.fromRGB(160, 190, 230)
+dropLabel.Font = Enum.Font.GothamSemibold
+dropLabel.TextSize = 12
+dropLabel.TextXAlignment = Enum.TextXAlignment.Left
+dropLabel.Parent = pages.Highlight
+
+local dropBtn = Instance.new("TextButton")
+dropBtn.Size = UDim2.new(1, -150, 0, 25)
+dropBtn.Position = UDim2.new(0, 135, 0, 90)
+dropBtn.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
+dropBtn.Text = "All Players ▼"
+dropBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+dropBtn.Font = Enum.Font.GothamSemibold
+dropBtn.TextSize = 11
+dropBtn.Parent = pages.Highlight
+Instance.new("UICorner", dropBtn).CornerRadius = UDim.new(0, 4)
+
+local dropScroll = Instance.new("ScrollingFrame")
+dropScroll.Size = UDim2.new(1, -150, 0, 100)
+dropScroll.Position = UDim2.new(0, 135, 0, 118)
+dropScroll.BackgroundColor3 = Color3.fromRGB(15, 18, 32)
+dropScroll.Visible = false
+dropScroll.ZIndex = 10
+dropScroll.Parent = pages.Highlight
+Instance.new("UIListLayout", dropScroll)
+
+dropBtn.MouseButton1Click:Connect(function()
+	dropScroll.Visible = not dropScroll.Visible
+	if dropScroll.Visible then
+		for _, c in pairs(dropScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+		local function addDropOpt(name)
+			local opt = Instance.new("TextButton")
+			opt.Size = UDim2.new(1, 0, 0, 22)
+			opt.BackgroundColor3 = Color3.fromRGB(20, 25, 45)
+			opt.Text = name
+			opt.TextColor3 = Color3.fromRGB(220, 220, 220)
+			opt.Font = Enum.Font.Gotham
+			opt.TextSize = 11
+			opt.ZIndex = 11
+			opt.Parent = dropScroll
+			opt.MouseButton1Click:Connect(function()
+				espTarget = name; dropBtn.Text = name .. " ▼"; dropScroll.Visible = false
+			end)
+		end
+		addDropOpt("All Players")
+		for _, p in pairs(Players:GetPlayers()) do if p ~= player then addDropOpt(p.Name) end end
+		dropScroll.CanvasSize = UDim2.new(0,0,0, (#Players:GetPlayers() * 22) + 22)
+	end
+end)
+
+createColorWheelSpectrum(pages.Highlight, "ESP Color Matrix:", 145, espColor, function(c) espColor = c end)
+
+-- --- TAB 3: AIMING & HITBOX MODULE ---
+createToggle(pages.Aiming, "Enable Aim Assist", 10, aimAssistEnabled, function(state) aimAssistEnabled = state end)
+createToggle(pages.Aiming, "Show FOV Radius Circle", 45, showFovCircle, function(state) showFovCircle = state end)
+createSlider(pages.Aiming, "Aim Field of View Size", 90, 30, 400, aimFovRadius, function(v) aimFovRadius = v end)
+createSlider(pages.Aiming, "Smoothing Weight Strength", 145, 1, 25, aimStrength, function(v) aimStrength = v end)
+createColorWheelSpectrum(pages.Aiming, "Aim FOV Color:", 200, aimFovColor, function(c) aimFovColor = c end)
+
+-- Custom Activation Button
+local bindLabel = Instance.new("TextLabel")
+bindLabel.Size = UDim2.new(0, 150, 0, 25)
+bindLabel.Position = UDim2.new(0, 15, 0, 245)
+bindLabel.BackgroundTransparency = 1
+bindLabel.Text = "Activation Button Bind:"
+bindLabel.TextColor3 = Color3.fromRGB(160, 190, 230)
+bindLabel.Font = Enum.Font.GothamSemibold
+bindLabel.TextSize = 12
+bindLabel.TextXAlignment = Enum.TextXAlignment.Left
+bindLabel.Parent = pages.Aiming
+
+local bindBtn = Instance.new("TextButton")
+bindBtn.Size = UDim2.new(1, -180, 0, 26)
+bindBtn.Position = UDim2.new(0, 165, 0, 245)
+bindBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 55)
+bindBtn.Text = currentBindName
+bindBtn.TextColor3 = Color3.fromRGB(0, 180, 255)
+bindBtn.Font = Enum.Font.GothamBold
+bindBtn.TextSize = 11
+bindBtn.Parent = pages.Aiming
+Instance.new("UICorner", bindBtn).CornerRadius = UDim.new(0, 5)
+
+local listeningForBind = false
+bindBtn.MouseButton1Click:Connect(function()
+	listeningForBind = true; bindBtn.Text = "..."; bindBtn.TextColor3 = Color3.fromRGB(255, 150, 0)
+end)
+
+UserInputService.InputBegan:Connect(function(input)
+	if listeningForBind then
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			aimKeyCode = input.KeyCode; aimInputType = Enum.UserInputType.Keyboard; currentBindName = input.KeyCode.Name
+		elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.MouseButton3 then
+			aimKeyCode = nil; aimInputType = input.UserInputType; currentBindName = input.UserInputType.Name
+		else return end
+		bindBtn.Text = currentBindName; bindBtn.TextColor3 = Color3.fromRGB(0, 180, 255); listeningForBind = false
+	end
+end)
+
+-- --- HITBOX EXPANDER OVERLAYS ---
+createToggle(pages.Aiming, "Expand Enemy Hitboxes", 285, hitboxExpanderEnabled, function(state) hitboxExpanderEnabled = state end)
+createToggle(pages.Aiming, "Highlight / Show Hitbox", 320, showHitboxVisuals, function(state) showHitboxVisuals = state end)
+createSlider(pages.Aiming, "Hitbox Size Multiplier", 355, 2, 30, hitboxSizeValue, function(v) hitboxSizeValue = v end)
+createColorWheelSpectrum(pages.Aiming, "Hitbox Selection Color:", 405, hitboxColor, function(c) hitboxColor = c end)
+
+
+-- --- CORE MATHEMATICS & SIMULATION ENGINE ---
+
+-- Precise FOV Circle Loop
+RunService.RenderStepped:Connect(function()
+	if showFovCircle then
+		fovCircle.Visible = true; fovCircle.Radius = aimFovRadius
+		fovCircle.Position = UserInputService:GetMouseLocation(); fovCircle.Color = aimFovColor
+	else fovCircle.Visible = false end
+end)
+
+-- Precision Aim Target Acquisition Function
+local function getClosestPlayerToCrosshair()
+	local closestPlayer = nil
+	local shortestDistance = aimFovRadius
+	local mousePos = UserInputService:GetMouseLocation()
+
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= player and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+			local head = p.Character.Head
+			local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+			
+			if onScreen then
+				local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+				if distance < shortestDistance then
+					shortestDistance = distance; closestPlayer = p
+				end
+			end
+		end
+	end
+	return closestPlayer
+end
+
+local function isAimBindPressed()
+	if aimInputType == Enum.UserInputType.Keyboard and aimKeyCode then
+		return UserInputService:IsKeyDown(aimKeyCode)
+	else
+		return UserInputService:IsMouseButtonPressed(aimInputType)
+	end
+end
+
+-- Core Aim Assist
+RunService.RenderStepped:Connect(function()
+	if aimAssistEnabled and isAimBindPressed() then
+		local targetPlayer = getClosestPlayerToCrosshair()
+		if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+			local targetHead = targetPlayer.Character.Head
+			camera.CFrame = camera.CFrame:Lerp(CFrame.new(camera.CFrame.Position, targetHead.Position), 1 / aimStrength)
+		end
+	end
+end)
+
+-- --- CONSTANT ACTIVE HITBOX SCANNER ENGINE ---
+RunService.RenderStepped:Connect(function()
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChildOfClass("Humanoid") then
+			local hrp = p.Character.HumanoidRootPart
+			local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
+			
+			if humanoid.Health > 0 then
+				if not originalPartSizes[p.Name] then
+					originalPartSizes[p.Name] = hrp.Size
+				end
+
+				local boxAdorn = hrp:FindFirstChild("WildHitboxVisual")
+				if showHitboxVisuals and hitboxExpanderEnabled then
+					if not boxAdorn then
+						boxAdorn = Instance.new("BoxHandleAdornment")
+						boxAdorn.Name = "WildHitboxVisual"
+						boxAdorn.AlwaysOnTop = true
+						boxAdorn.ZIndex = 5
+						boxAdorn.Adornee = hrp
+						boxAdorn.Parent = hrp
+					end
+					boxAdorn.Size = hrp.Size
+					boxAdorn.Color3 = hitboxColor
+					boxAdorn.Transparency = 0.6
+				else
+					if boxAdorn then boxAdorn:Destroy() end
+				end
+
+				if hitboxExpanderEnabled then
+					hrp.Size = Vector3.new(hitboxSizeValue, hitboxSizeValue, hitboxSizeValue)
+					hrp.CanCollide = false
+					hrp.Transparency = showHitboxVisuals and 1 or 0
+				else
+					if originalPartSizes[p.Name] then
+						hrp.Size = originalPartSizes[p.Name]
+						hrp.Transparency = 0
+					end
+				end
+			end
+		end
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(leavingPlayer)
+	if originalPartSizes[leavingPlayer.Name] then
+		originalPartSizes[leavingPlayer.Name] = nil
+	end
+end)
+
+-- --- CUSTOM LOCAL NAME TAG ENGINE ---
+RunService.RenderStepped:Connect(function()
+	if player.Character and player.Character:FindFirstChild("Head") then
+		local head = player.Character.Head
+		local customTag = head:FindFirstChild("WildOverheadTag")
+
+		if customTagEnabled then
+			if not customTag then
+				customTag = Instance.new("BillboardGui")
+				customTag.Name = "WildOverheadTag"
+				customTag.Size = UDim2.new(0, 200, 0, 50)
+				customTag.StudsOffset = Vector3.new(0, 2.5, 0)
+				customTag.AlwaysOnTop = true
+				
+				local textLabel = Instance.new("TextLabel")
+				textLabel.Name = "TagText"
+				textLabel.Size = UDim2.new(1, 0, 1, 0)
+				textLabel.BackgroundTransparency = 1
+				textLabel.Font = Enum.Font.GothamBold
+				textLabel.TextStrokeTransparency = 0
+				textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+				textLabel.Parent = customTag
+				customTag.Parent = head
+			end
+			
+			local tagLabel = customTag:FindFirstChild("TagText")
+			if tagLabel then
+				tagLabel.Text = player.Name
+				tagLabel.TextSize = customTagSize
+				tagLabel.TextColor3 = customTagColor
+			end
+		else
+			if customTag then customTag:Destroy() end
+		end
+	end
+end)
+
+-- --- CTRL + CLICK TO TELEPORT LOGIC ---
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if ctrlClickTpEnabled and input.UserInputType == Enum.UserInputType.MouseButton1 and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+		local mouseLocation = UserInputService:GetMouseLocation()
+		local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterDirectionalVectors = {player.Character}
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, raycastParams)
+		if result and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			player.Character.HumanoidRootPart.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
+		end
+	end
+	
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.M then
+		mainFrame.Visible = not mainFrame.Visible
+	end
+end)
+
+-- --- ESP DRAW ENGINE ---
+local function createEspElements(p)
+	local box = Instance.new("Frame"); box.BackgroundTransparency = 1; box.BorderSizePixel = 0; box.Visible = false; box.Parent = screenGui
+	local stroke = Instance.new("UIStroke"); stroke.Thickness = 1.5; stroke.Parent = box
+	local tracer = Instance.new("Frame"); tracer.BorderSizePixel = 0; tracer.Visible = false; tracer.Parent = screenGui
+
+	RunService.RenderStepped:Connect(function()
+		if not p.Character or not p.Character:FindFirstChild("HumanoidRootPart") or not p.Character:FindFirstChildOfClass("Humanoid") or p.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+			box.Visible = false; tracer.Visible = false; return
+		end
+		if espTarget ~= "All Players" and espTarget ~= p.Name then box.Visible = false; tracer.Visible = false; return end
+
+		local hrp = p.Character.HumanoidRootPart
+		local vector, onScreen = camera:WorldToViewportPoint(hrp.Position)
+		stroke.Color = espColor
+		tracer.BackgroundColor3 = espColor
+
+		if onScreen then
+			local sizeY = (camera.ViewportSize.Y / vector.Z) * 3
+			local sizeX = sizeY * 0.6
+			if espBoxes then
+				box.Size = UDim2.new(0, sizeX, 0, sizeY)
+				box.Position = UDim2.new(0, vector.X - (sizeX / 2), 0, vector.Y - (sizeY / 2))
+				box.Visible = true
+			else box.Visible = false end
+
+			if espTracers then
+				tracer.Size = UDim2.new(0, 2, 0, camera.ViewportSize.Y - vector.Y)
+				tracer.Position = UDim2.new(0, vector.X, 0, vector.Y)
+				tracer.Visible = true
+			else tracer.Visible = false end
+		else box.Visible = false; tracer.Visible = false end
+	end)
+end
+
+for _, p in pairs(Players:GetPlayers()) do if p ~= player then createEspElements(p) end end
+Players.PlayerAdded:Connect(function(p) if p ~= player then createEspElements(p) end end)
+
+-- --- NOCLIP & FLIGHT RUN LOOPS ---
+RunService.Stepped:Connect(function()
+	if noclipEnabled and player.Character then
+		for _, part in pairs(player.Character:GetDescendants()) do
+			if part:IsA("BasePart") then part.CanCollide = false end
+		end
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if flyEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+		local hrp = player.Character.HumanoidRootPart
+		local hum = player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = true end
+		
+		local moveDirection = Vector3.new(0,0,0)
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + camera.CFrame.RightVector end
+		
+		if moveDirection.Magnitude > 0 then
+			hrp.Velocity = Vector3.new(0, 0, 0)
+			hrp.CFrame = hrp.CFrame + (moveDirection.Unit * (flySpeed * 0.016))
+		else hrp.Velocity = Vector3.new(0,0,0) end
+	else
+		if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+			if player.Character:FindFirstChildOfClass("Humanoid").PlatformStand == true then
+				player.Character:FindFirstChildOfClass("Humanoid").PlatformStand = false
+			end
+		end
+	end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+	if infJumpEnabled and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+		player.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
+print("Wild VIP V2 Updated - Custom Label Engine online.")
